@@ -1,0 +1,9 @@
+{
+  "id": "note-exporter-for-llm",
+  "name": "Note exporter for LLM",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Copy folder contents (Markdown & Canvas files) to the clipboard formatted for LLM context.",
+  "author": "Gordan Renic",
+  "isDesktopOnly": false
+}

@@ -1,0 +1,9 @@
+/* Note exporter for LLM - Styles */
+
+.tree-row:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.tree-row .clickable-icon:hover {
+    color: var(--text-error);
+}
