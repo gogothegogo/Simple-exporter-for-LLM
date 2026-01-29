@@ -18,7 +18,7 @@ class NoteExporterForLLM extends obsidian.Plugin {
 
     this.addSettingTab(new NoteExporterSettingTab(this.app, this));
 
-    // Register context menu for folders
+    // Register context menu for folders and files
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         if (file instanceof obsidian.TFolder) {
@@ -38,6 +38,49 @@ class NoteExporterForLLM extends obsidian.Plugin {
                 const files = [];
                 this.collectFiles(file, files);
                 new ContextBuilderModal(this.app, this, files).open();
+              });
+          });
+        } else if (file instanceof obsidian.TFile && (file.extension === "md" || file.extension === "canvas")) {
+          menu.addItem((item) => {
+            item
+              .setTitle("Copy file for LLM")
+              .setIcon("document")
+              .onClick(async () => {
+                await this.exportFilesToClipboard([file]);
+              });
+          });
+          menu.addItem((item) => {
+            item
+              .setTitle("Add file to Context Builder")
+              .setIcon("layout-list")
+              .onClick(() => {
+                new ContextBuilderModal(this.app, this, [file]).open();
+              });
+          });
+        }
+      })
+    );
+
+    // Register context menu for multiple files
+    this.registerEvent(
+      this.app.workspace.on("files-menu", (menu, files) => {
+        const validFiles = files.filter(f => f instanceof obsidian.TFile && (f.extension === "md" || f.extension === "canvas"));
+        
+        if (validFiles.length > 0) {
+          menu.addItem((item) => {
+            item
+              .setTitle(`Copy ${validFiles.length} files for LLM`)
+              .setIcon("documents")
+              .onClick(async () => {
+                await this.exportFilesToClipboard(validFiles);
+              });
+          });
+          menu.addItem((item) => {
+            item
+              .setTitle("Add selection to Context Builder")
+              .setIcon("layout-list")
+              .onClick(() => {
+                new ContextBuilderModal(this.app, this, validFiles).open();
               });
           });
         }
@@ -207,48 +250,40 @@ class ContextBuilderModal extends obsidian.Modal {
 
   onOpen() {
     const { contentEl } = this;
-    contentEl.addClass("note-exporter-context-builder");
-    this.render();
-  }
-
-  render() {
-    const { contentEl } = this;
     contentEl.empty();
-
     contentEl.createEl("h2", { text: "Context Builder" });
 
-    // 1. Selected Files Section (Tree)
-    contentEl.createEl("h3", { text: `Selected Files (${this.selectedFiles.size})` });
-    const selectedFilesEl = contentEl.createDiv({ cls: "selected-files-tree" });
-    selectedFilesEl.style.maxHeight = "400px";
-    selectedFilesEl.style.overflowY = "auto";
-    selectedFilesEl.style.border = "1px solid var(--background-modifier-border)";
-    selectedFilesEl.style.padding = "10px";
-    selectedFilesEl.style.marginBottom = "20px";
-    selectedFilesEl.style.fontFamily = "var(--font-monospace)";
+    // 1. Header with count
+    this.selectedFilesCountEl = contentEl.createEl("p", { 
+      text: `Selected: ${this.selectedFiles.size} files`,
+      cls: "selected-count" 
+    });
 
-    if (this.selectedFiles.size === 0) {
-      selectedFilesEl.createEl("p", { text: "No files selected.", cls: "empty-state" });
-    } else {
-      this.renderTreeUI(selectedFilesEl);
-    }
+    // 2. Scrollable Tree Container
+    this.treeContainer = contentEl.createDiv({ cls: "selected-files-tree" });
+    this.treeContainer.style.height = "300px";
+    this.treeContainer.style.overflowY = "auto";
+    this.treeContainer.style.border = "1px solid var(--background-modifier-border)";
+    this.treeContainer.style.padding = "10px";
+    this.treeContainer.style.marginBottom = "20px";
+    this.treeContainer.style.fontFamily = "var(--font-monospace)";
 
-    // 2. Search Section (Below)
+    // 3. Search Section
     contentEl.createEl("h3", { text: "Add More Notes" });
     const searchContainer = contentEl.createDiv({ cls: "search-container" });
-    const searchInput = new obsidian.TextComponent(searchContainer)
+    this.searchComponent = new obsidian.TextComponent(searchContainer)
       .setPlaceholder("Search for notes to add...")
       .onChange((value) => {
-        this.renderSearchResults(value, searchResultsEl);
+        this.renderSearchResults(value);
       });
-    searchInput.inputEl.style.width = "100%";
-    searchInput.inputEl.style.marginBottom = "10px";
+    this.searchComponent.inputEl.style.width = "100%";
+    this.searchComponent.inputEl.style.marginBottom = "10px";
 
-    const searchResultsEl = contentEl.createDiv({ cls: "search-results" });
-    searchResultsEl.style.maxHeight = "200px";
-    searchResultsEl.style.overflowY = "auto";
+    this.searchResultsEl = contentEl.createDiv({ cls: "search-results" });
+    this.searchResultsEl.style.height = "150px";
+    this.searchResultsEl.style.overflowY = "auto";
 
-    // 3. Actions Section
+    // 4. Actions
     const actionsEl = contentEl.createDiv({ cls: "actions" });
     actionsEl.style.display = "flex";
     actionsEl.style.justifyContent = "flex-end";
@@ -258,7 +293,7 @@ class ContextBuilderModal extends obsidian.Modal {
     const clearBtn = actionsEl.createEl("button", { text: "Clear All" });
     clearBtn.onclick = () => {
       this.selectedFiles.clear();
-      this.render();
+      this.refreshUI();
     };
 
     const copyBtn = actionsEl.createEl("button", { text: "Copy to Clipboard", cls: "mod-cta" });
@@ -266,14 +301,31 @@ class ContextBuilderModal extends obsidian.Modal {
       await this.plugin.exportFilesToClipboard(Array.from(this.selectedFiles));
       this.close();
     };
+
+    this.refreshUI();
   }
 
-  renderTreeUI(containerEl) {
+  refreshUI() {
+    this.selectedFilesCountEl.setText(`Selected: ${this.selectedFiles.size} files`);
+    this.renderTreeUI();
+    const query = this.searchComponent.getValue();
+    if (query) this.renderSearchResults(query);
+  }
+
+  renderTreeUI() {
+    const containerEl = this.treeContainer;
+    containerEl.empty();
+
+    if (this.selectedFiles.size === 0) {
+      containerEl.createEl("p", { text: "No files selected.", cls: "empty-state" });
+      return;
+    }
+
     const treeData = {};
     const fileMap = new Map();
 
     for (const file of this.selectedFiles) {
-      const parts = file.path.split('/');
+      const parts = file.path.split("/");
       let current = treeData;
       for (const part of parts) {
         if (!current[part]) current[part] = {};
@@ -293,48 +345,39 @@ class ContextBuilderModal extends obsidian.Modal {
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
         row.style.padding = "2px 4px";
-        row.style.borderRadius = "4px";
 
         const labelContainer = row.createDiv();
         labelContainer.style.display = "flex";
         labelContainer.style.alignItems = "center";
         labelContainer.style.gap = "4px";
-        labelContainer.style.overflow = "hidden";
 
         if (!isFile) {
           const folderIcon = labelContainer.createSpan();
           obsidian.setIcon(folderIcon, "folder");
-          folderIcon.style.width = "16px";
-          folderIcon.style.height = "16px";
         }
 
-        const label = labelContainer.createEl("span", { text: key });
-        label.style.overflow = "hidden";
-        label.style.textOverflow = "ellipsis";
-        label.style.whiteSpace = "nowrap";
+        labelContainer.createEl("span", { text: key + (isFile ? "" : "/") });
 
         const removeBtn = row.createEl("button", { text: "×", cls: "clickable-icon" });
-        removeBtn.style.padding = "0 5px";
-        removeBtn.style.height = "20px";
-        removeBtn.style.lineHeight = "1";
-        
-        removeBtn.onclick = () => {
+        removeBtn.onclick = (e) => {
+          e.stopPropagation();
           if (isFile) {
             this.selectedFiles.delete(fileMap.get(currentPath));
           } else {
-            // Remove whole folder
-            for (const [path, file] of fileMap.entries()) {
-              if (path === currentPath || path.startsWith(currentPath + "/")) {
-                this.selectedFiles.delete(file);
+            const toDelete = [];
+            for (const file of this.selectedFiles) {
+              if (file.path === currentPath || file.path.startsWith(currentPath + "/")) {
+                toDelete.push(file);
               }
             }
+            toDelete.forEach(f => this.selectedFiles.delete(f));
           }
-          this.render();
+          this.refreshUI();
         };
 
         if (Object.keys(node[key]).length > 0) {
           const childrenContainer = parentEl.createDiv();
-          childrenContainer.style.marginLeft = "16px";
+          childrenContainer.style.marginLeft = "20px";
           childrenContainer.style.borderLeft = "1px solid var(--background-modifier-border)";
           buildUI(node[key], childrenContainer, currentPath);
         }
@@ -344,7 +387,8 @@ class ContextBuilderModal extends obsidian.Modal {
     buildUI(treeData, containerEl);
   }
 
-  renderSearchResults(query, containerEl) {
+  renderSearchResults(query) {
+    const containerEl = this.searchResultsEl;
     containerEl.empty();
     if (!query) return;
 
@@ -355,40 +399,21 @@ class ContextBuilderModal extends obsidian.Modal {
     );
 
     const limitedResults = allFiles.slice(0, 15);
-
-    if (limitedResults.length === 0) {
-      containerEl.createEl("p", { text: "No matching files found.", cls: "empty-state" });
-      return;
-    }
-
     limitedResults.forEach((file) => {
-      const resultRow = containerEl.createDiv({ cls: "search-result-row" });
-      resultRow.style.display = "flex";
-      resultRow.style.justifyContent = "space-between";
-      resultRow.style.alignItems = "center";
-      resultRow.style.padding = "4px 8px";
+      const resultRow = containerEl.createDiv({ cls: "search-result-row tree-row" });
       resultRow.style.cursor = "pointer";
-      resultRow.style.borderRadius = "4px";
-
       resultRow.createEl("span", { text: file.path });
       
-      const addBtn = resultRow.createEl("button", { text: "Add", cls: "mod-primary" });
-      addBtn.onclick = (e) => {
-        e.stopPropagation();
+      resultRow.onclick = (e) => {
+        e.preventDefault();
         this.selectedFiles.add(file);
-        this.render();
-      };
-
-      resultRow.onclick = () => {
-        this.selectedFiles.add(file);
-        this.render();
+        this.refreshUI();
       };
     });
   }
 
   onClose() {
-    const { contentEl } = this;
-    contentEl.empty();
+    this.contentEl.empty();
   }
 }
 
