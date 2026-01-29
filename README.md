@@ -34,13 +34,16 @@ A lightweight Obsidian plugin designed to streamline the process of providing co
 
 ### 3. Settings & Customization
 Go to **Settings > Note exporter for LLM** to:
-- Change the export format (**XML** is recommended for Claude/ChatGPT).
-- Toggle the **File Tree** inclusion.
+- **Base Template:** Choose a starting template (**XML** or **JSON**).
+- **Template Configuration:** Fully customize how the context is built.
+    - `Context Prefix`: Text at the very beginning. Use `{{TREE}}` to insert the visual file structure.
+    - `Context Suffix`: Text at the very end.
+    - `Item Prefix`: Text before each file. Placeholders: `{{PATH}}`, `{{CTIME}}`, `{{MTIME}}`.
+    - `Item Suffix`: Text after each file.
 - **Ignored Tags:** Enter a comma-separated list of tags you want to exclude. 
     - Example: `#private, archive`
     - Nested tags are supported: ignoring `#work` will also ignore `#work/projectA`.
     - These files will be hidden from the Context Builder and skipped during any clipboard export.
-- Define a **Custom Template** using placeholders like `{{PATH}}`, `{{CTIME}}`, `{{MTIME}}`, and `{{TREE}}`.
 
 ## Example Output (XML)
 

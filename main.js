@@ -421,29 +421,30 @@ class NoteExporterSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(containerEl)
       .setName("Base Template")
       .setDesc("Choose a starting template. Customizing fields below will set this to 'Custom'.")
-      .addDropdown((dropdown) =>
+      .addDropdown((dropdown) => {
+        this.templateDropdown = dropdown;
         dropdown
           .addOption("xml", "XML Structured")
-          .addOption("json", "JSON-like (List)")
+          .addOption("json", "JSON Structured")
           .addOption("custom", "Custom")
           .setValue(this.plugin.settings.template)
           .onChange(async (value) => {
             this.plugin.settings.template = value;
             if (value === "xml") {
-              this.plugin.settings.customPrefix = "<context>\n{{TREE}}\n";
+              this.plugin.settings.customPrefix = "<context>\n<tree>\n{{TREE}}</tree>\n";
               this.plugin.settings.customSuffix = "\n</context>";
               this.plugin.settings.customItemPrefix = '<item loc="{{PATH}}" created="{{CTIME}}" modified="{{MTIME}}">\n';
               this.plugin.settings.customItemSuffix = "\n</item>\n";
             } else if (value === "json") {
-              this.plugin.settings.customPrefix = "[\n";
-              this.plugin.settings.customSuffix = "\n]";
-              this.plugin.settings.customItemPrefix = '  {\n    "path": "{{PATH}}",\n    "created": "{{CTIME}}",\n    "modified": "{{MTIME}}",\n    "content": "';
-              this.plugin.settings.customItemSuffix = '"\n  },\n';
+              this.plugin.settings.customPrefix = "{\n  \"tree\": \"{{TREE}}\",\n  \"files\": [\n";
+              this.plugin.settings.customSuffix = "\n  ]\n}";
+              this.plugin.settings.customItemPrefix = '    {\n      "path": "{{PATH}}",\n      "created": "{{CTIME}}",\n      "modified": "{{MTIME}}",\n      "content": "';
+              this.plugin.settings.customItemSuffix = '"\n    },\n';
             }
             await this.plugin.saveSettings();
             this.display();
-          })
-      );
+          });
+      });
 
     new obsidian.Setting(containerEl)
       .setName("Ignored Tags")
@@ -468,11 +469,12 @@ class NoteExporterSettingTab extends obsidian.PluginSettingTab {
       .setDesc("Text at the beginning. Use {{TREE}} for the file tree.")
       .addTextArea((text) =>
         text
-          .setPlaceholder("<context>\n{{TREE}}\n")
+          .setPlaceholder("<context>\n<tree>\n{{TREE}}</tree>\n")
           .setValue(this.plugin.settings.customPrefix)
           .onChange(async (value) => {
             this.plugin.settings.customPrefix = value;
             this.plugin.settings.template = "custom";
+            this.templateDropdown.setValue("custom");
             await this.plugin.saveSettings();
           })
       );
@@ -487,6 +489,7 @@ class NoteExporterSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.customSuffix = value;
             this.plugin.settings.template = "custom";
+            this.templateDropdown.setValue("custom");
             await this.plugin.saveSettings();
           })
       );
@@ -501,6 +504,7 @@ class NoteExporterSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.customItemPrefix = value;
             this.plugin.settings.template = "custom";
+            this.templateDropdown.setValue("custom");
             await this.plugin.saveSettings();
           })
       );
@@ -515,6 +519,7 @@ class NoteExporterSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.customItemSuffix = value;
             this.plugin.settings.template = "custom";
+            this.templateDropdown.setValue("custom");
             await this.plugin.saveSettings();
           })
       );
