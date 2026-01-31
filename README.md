@@ -1,5 +1,8 @@
 # Simple Exporter for LLM (Obsidian Plugin)
 
+> [!info]
+> This plugin is 100% generated using AI (Gemini CLI)!
+
 A lightweight Obsidian plugin designed to streamline the process of providing context to Large Language Models (LLMs) like ChatGPT, Claude, or Gemini. Quickly export your notes and canvas files in a structured format optimized for LLM comprehension.
 
 ## Features
